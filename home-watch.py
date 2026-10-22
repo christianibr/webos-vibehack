@@ -21,8 +21,10 @@ import time
 import lgtv
 
 LAUNCHER = "com.gathin.tvhome"
-LG_HOME = "com.webos.app.home"
+LG_HOME = {"com.webos.app.home", "com.webos.app.fullhome"}  # fullhome: webOS 5 home bar
+HOME_WINDOW = "_WEBOS_WINDOW_TYPE_HOME"
 ESCAPE_SECONDS = 3.0
+DEBUG = bool(os.environ.get("HOME_WATCH_DEBUG"))
 
 
 def log(*args):
@@ -33,16 +35,24 @@ async def watch(host):
     ws = await lgtv.session(host, ping_interval=10, ping_timeout=10)
     log("connected to", host)
     last_redirect = 0.0
+    home_open = False
     try:
+        # extraInfo makes webOS 5 list every visible window, including the home bar overlay.
         await ws.send(json.dumps({"type": "subscribe", "id": "fg",
                                   "uri": "ssap://com.webos.applicationManager/getForegroundAppInfo",
-                                  "payload": {}}))
+                                  "payload": {"extraInfo": True}}))
         async for raw in ws:
             msg = json.loads(raw)
             if msg.get("id") != "fg":
                 continue
-            app = msg.get("payload", {}).get("appId")
-            if app != LG_HOME:
+            payload = msg.get("payload", {})
+            if DEBUG:
+                log("fg:", json.dumps(payload))
+            # Newer firmware reports a list of windows, older a single appId.
+            windows = payload.get("foregroundAppInfo") or [payload]
+            shown = any(w.get("appId") in LG_HOME or w.get("windowType") == HOME_WINDOW for w in windows)
+            was_open, home_open = home_open, shown
+            if not shown or was_open:
                 continue
             now = time.monotonic()
             if now - last_redirect < ESCAPE_SECONDS:
