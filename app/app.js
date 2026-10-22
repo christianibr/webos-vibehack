@@ -80,9 +80,16 @@
     var all = (window.TV_APPS && TV_APPS.apps) || [];
     var byId = {};
     all.forEach(function (a) { byId[a.id] = a; });
+    // onlyApps: show just these apps, in this exact order (instead of everything sorted by name).
+    if (CONFIG.onlyApps) {
+      all = CONFIG.onlyApps.filter(function (id) { return byId[id]; }).map(function (id) { return byId[id]; });
+    }
     var hidden = {};
     (CONFIG.hiddenApps || []).forEach(function (id) { hidden[id] = true; });
-    var byTitle = function (a, b) { return a.title.toLowerCase() < b.title.toLowerCase() ? -1 : 1; };
+    var byTitle = function (a, b) {
+      if (CONFIG.onlyApps) return all.indexOf(a) - all.indexOf(b);
+      return a.title.toLowerCase() < b.title.toLowerCase() ? -1 : 1;
+    };
 
     // An order arranged on the TV wins, until dockApps in config.js changes.
     var saved = loadOrder();
@@ -416,9 +423,61 @@
       if (h < GREETINGS[k][0]) { $('greeting').textContent = GREETINGS[k][1]; break; }
     }
     var m = now.getMinutes();
-    $('clock').textContent = ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m;
-    $('ampm').textContent = h < 12 ? 'am' : 'pm';
+    $('clock').textContent = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
     $('date').textContent = DAYS[now.getDay()] + '  ' + now.getDate() + ' ' + MONTHS[now.getMonth()];
+  }
+
+  /** Outdoor temperature from Open-Meteo. On any failure the weather just stays hidden. */
+  var weatherAt = 0;   // when the last reading arrived
+
+  function showWeather(text) {
+    $('weather').textContent = text || '';
+    $('weather').classList.toggle('off', !text);
+    $('weatherDivider').classList.toggle('off', !text);
+  }
+
+  function updateWeather() {
+    var w = CONFIG.weather;
+    if (!w) return;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'https://api.open-meteo.com/v1/forecast?latitude=' + w.latitude + '&longitude=' + w.longitude +
+      '&current_weather=true');
+    xhr.timeout = 15000;
+    xhr.onload = function () {
+      try {
+        var t = JSON.parse(xhr.responseText).current_weather.temperature;
+        if (typeof t !== 'number') throw new Error('no temperature');
+        weatherAt = Date.now();
+        showWeather(Math.round(t) + '°');
+      } catch (e) { stale(); }
+    };
+    xhr.onerror = xhr.ontimeout = stale;
+    xhr.send();
+  }
+
+  /** A failed refresh keeps the last reading for a while, then hides it rather than show old data. */
+  function stale() {
+    if (Date.now() - weatherAt > 45 * 60 * 1000) showWeather('');
+  }
+
+  // ---- background photos ---------------------------------------------------------------------
+
+  var bgLayers = [$('bgA'), $('bgB')], bgFront = 0, bgIndex = -1;
+
+  /** Crossfades to the next photo once it has loaded; a photo that fails to load is skipped. */
+  function nextBackground() {
+    var list = CONFIG.backgrounds || [];
+    if (!list.length) return;
+    bgIndex = (bgIndex + 1) % list.length;
+    var img = new Image();
+    img.onload = function () {
+      var back = bgLayers[1 - bgFront];
+      back.style.backgroundImage = 'url(' + list[bgIndex] + ')';
+      back.style.opacity = '1';
+      bgLayers[bgFront].style.opacity = '0';
+      bgFront = 1 - bgFront;
+    };
+    img.src = list[bgIndex];
   }
 
   /** Shows the Wi-Fi network name when the TV reports it, otherwise the connection type. */
@@ -606,6 +665,10 @@
   updateClock();
   setInterval(updateClock, 10000);
   watchNetwork();
+  updateWeather();
+  setInterval(updateWeather, ((CONFIG.weather && CONFIG.weather.refreshMinutes) || 15) * 60 * 1000);
+  nextBackground();
+  setInterval(nextBackground, (CONFIG.backgroundSeconds || 45) * 1000);
   animateIn();
   zone = 'none';
   focusTile(0);

@@ -6,6 +6,11 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Rotating nature photos: two layers so they crossfade, and a dark scrim for legibility. -->
+  <div id="bgA" class="bg"></div>
+  <div id="bgB" class="bg"></div>
+  <div id="scrim"></div>
+
   <!-- Ambient glow in the colour of the focused dock app; two layers so colours crossfade. -->
   <div id="ambientA" class="ambient"></div>
   <div id="ambientB" class="ambient"></div>
@@ -17,7 +22,7 @@
     <div id="leftBlock">
       <div id="greeting"></div>
       <div id="timeRow">
-        <span id="clock"></span><span id="ampm"></span><span class="divider"></span><span id="date"></span>
+        <span id="clock"></span><span id="ampm"></span><span class="divider"></span><span id="date"></span><span class="divider off" id="weatherDivider"></span><span id="weather" class="off"></span>
       </div>
     </div>
     <div id="topButtons">
